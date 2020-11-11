@@ -19,8 +19,8 @@
 // realtime_publisher
 #include <realtime_tools/realtime_publisher.h>
 #include <franka_hw/trigger_rate.h>
-#include <franka_example_controllers/ModelInput.h>
-#include <franka_example_controllers/GainValues.h>
+#include <franka_example_controllers/StateMsg.h>
+#include <franka_example_controllers/ControlMsg.h>
 
 namespace franka_example_controllers {
     class VariableImpedanceController : public controller_interface::MultiInterfaceController<
@@ -76,10 +76,10 @@ namespace franka_example_controllers {
         //Realtime Publisher
         Eigen::Matrix<double, 7, 1> last_tau_d_;
         double elapsed_time_{0.0};
-        realtime_tools::RealtimePublisher<franka_example_controllers::ModelInput> publisher_;
-        franka_hw::TriggerRate rate_trigger_{100.0};
+        realtime_tools::RealtimePublisher<franka_example_controllers::StateMsg> publisher_;
+        franka_hw::TriggerRate rate_trigger_{500.0};
 
-        ros::Subscriber sub_gain_values;
-        void gainValuesCallback(const franka_example_controllers::GainValues& msg);
+        ros::Subscriber control_sub;
+        void controlCallback(const franka_example_controllers::ControlMsg& msg);
     };
 } // end namespace

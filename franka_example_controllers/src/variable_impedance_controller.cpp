@@ -12,14 +12,13 @@
 #include <ros/ros.h>
 
 #include <franka/robot_state.h>
-#include "pseudo_inversion.h"
 
 namespace franka_example_controllers {
     bool VariableImpedanceController::init(hardware_interface::RobotHW* robot_hw,
                                     ros::NodeHandle& node_handle) {
 
-        node_handle.subscribe("/gain_values", 20,
-                &VariableImpedanceController::gainValuesCallback,
+        node_handle.subscribe("/control_topic", 20,
+                &VariableImpedanceController::controlCallback,
                 this, ros::TransportHints().reliable().tcpNoDelay());
 
         // Read .yaml parameters
@@ -58,13 +57,13 @@ namespace franka_example_controllers {
         // Dynamic Reconfigure
         dynamic_server_node_ = ros::NodeHandle("dynamic_server_node");
         dynamic_server_param_ = std::make_unique<
-            dynamic_reconfigure::Server<franka_example_controllers::hybrid_paramConfig>>(
+            dynamic_reconfigure::Server<franka_example_controllers::task_paramConfig>>(
             dynamic_server_node_);
         dynamic_server_param_->setCallback(
-            boost::bind(&VariableImpedanceController::hybridParamCallback, this, _1, _2));
+            boost::bind(&VariableImpedanceController::taskParamCallback, this, _1, _2));
 
         // Realtime Publisher
-        publisher_.init(node_handle, "/model_input", 1);
+        publisher_.init(node_handle, "/state_topic", 1);
 
         return true;
     }
@@ -153,11 +152,10 @@ namespace franka_example_controllers {
 
         // Realtime publisher
         if (rate_trigger_() && publisher_.trylock()) {
-            publisher_.msg_.z_err = position_d_(2) - position(2);
-            publisher_.msg_.force_z = force_ext(2);
-            publisher_.msg_.force_des_z = desired_force_torque(2);
             for (size_t i = 0; i < 6; ++i) {
                 publisher_.msg_.ee_vel[i] = ee_vel(i);
+                publisher_.msg_.force[i] = force_ext(i);
+                publisher_.msg_.force_des[i] = desired_force_torque(i);
             }
             publisher_.unlockAndPublish();
         }
@@ -198,14 +196,12 @@ namespace franka_example_controllers {
             position_d_(i) += twist_d_(i) * 0.001;
     }
 
-    void VariableImpedanceController::gainValuesCallback(const franka_example_controllers::GainValues& msg) {
-        // K_P = Eigen::Map<Eigen::MatrixXd>(msg.K_P_action.data(), 6, 1);
-        // K_D = Eigen::Map<Eigen::MatrixXd>(msg.K_D_action.data(), 6, 1);
-        K_P.head(6) << msg.K_P_action[0], msg.K_P_action[1], msg.K_P_action[2], msg.K_P_action[3], msg.K_P_action[4], msg.K_P_action[5];
-        K_D.head(6) << msg.K_D_action[0], msg.K_D_action[1], msg.K_D_action[2], msg.K_D_action[3], msg.K_D_action[4], msg.K_D_action[5];
+    void VariableImpedanceController::controlCallback(const franka_example_controllers::ControlMsg& msg) {
+        K_P.head(6) << msg.stiffness[0], msg.stiffness[1], msg.stiffness[2], msg.stiffness[3], msg.stiffness[4], msg.stiffness[5];
+        K_D.head(6) << 2 * std::sqrt(msg.stiffness[0]), 2 * std::sqrt(msg.stiffness[1]), 2 * std::sqrt(msg.stiffness[2]), 2 * std::sqrt(msg.stiffness[3]), 2 * std::sqrt(msg.stiffness[4]), 2 * std::sqrt(msg.stiffness[5]);
     }
 
-    void VariableImpedanceController::hybridParamCallback(franka_example_controllers::hybrid_paramConfig& config,
+    void VariableImpedanceController::taskParamCallback(franka_example_controllers::task_paramConfig& config,
                             uint32_t level) {
         // Force gains
         k_pf = config.k_pf;

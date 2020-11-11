@@ -26,6 +26,8 @@ find_package(Franka 0.7.0 REQUIRED)
 
 add_message_files(FILES
   JointTorqueComparison.msg
+  StateMsg.msg
+  ControlMsg.msg
 )
 
 generate_messages()
