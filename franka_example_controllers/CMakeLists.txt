@@ -26,8 +26,9 @@ find_package(Franka 0.7.0 REQUIRED)
 
 add_message_files(FILES
   JointTorqueComparison.msg
-  StateMsg.msg
-  ControlMsg.msg
+  VariableImpedanceControllerState.msg
+  VariableImpedanceControllerCommand.msg
+  Gain.msg
 )
 
 generate_messages()
@@ -68,6 +69,7 @@ add_library(franka_example_controllers
   src/cartesian_impedance_example_controller.cpp
   src/force_example_controller.cpp
   src/dual_arm_cartesian_impedance_example_controller.cpp
+  src/variable_impedance_controller.cpp
 )
 
 add_dependencies(franka_example_controllers
