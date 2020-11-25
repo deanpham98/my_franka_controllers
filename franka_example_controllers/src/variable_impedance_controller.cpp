@@ -67,10 +67,6 @@ namespace franka_example_controllers {
         model_handle_ = std::make_unique<franka_hw::FrankaModelHandle>(
             model_interface->getHandle(arm_id + "_model"));
 
-        // Initialize value
-        position_d_.setZero();
-        orientation_d_.coeffs() << 0.0, 0.0, 0.0, 1.0;
-
         // Realtime Publisher
         pub_state_.init(node_handle, "state", 1);
 
@@ -87,8 +83,8 @@ namespace franka_example_controllers {
 
         // Initial target position
         Eigen::Affine3d initial_transform(Eigen::Matrix4d::Map(initial_state.O_T_EE.data()));
-        position_d_ = initial_transform.translation();
-        orientation_d_ = Eigen::Quaterniond(initial_transform.linear());
+        Eigen::Vector3d p = initial_transform.translation();
+        Eigen::Quaterniond q = Eigen::Quaterniond(initial_transform.linear());
 
         // Initial target command
         cmd ut;
@@ -109,10 +105,10 @@ namespace franka_example_controllers {
         ud_.fd.setZero();
 
         // initial filter velocity
-        dq_filter_ = Eigen::Vector7d::Map(initial_state.dq.data());
+        dq_filter_ = Eigen::Matrix<double, 7, 1>::Map(initial_state.dq.data());
 
         // initial external force for compensation
-        f0_ = Eigen::Vector6d::Map(initial_state.O_F_ext_hat_K.data());
+        f0_ = Eigen::Matrix<double, 6, 1>::Map(initial_state.O_F_ext_hat_K.data());
 
         p_u_prev(2) = ud_.fd(2);
     }
@@ -123,8 +119,8 @@ namespace franka_example_controllers {
         franka::RobotState robot_state = state_handle_->getRobotState();
 
         // update filter velocity
-        Eigen::Vector7d dq(Eigen::Vector7d::Map(robot_state.dq.data()));
-        dq_filter_ = alpha_dq_ * dp + (1 - alpha_dq_) * dq_filter_;
+        Eigen::Matrix<double, 7, 1> dq(Eigen::Matrix<double, 7, 1>::Map(robot_state.dq.data()));
+        dq_filter_ = alpha_dq_ * dq + (1 - alpha_dq_) * dq_filter_;
 
         // read target command from buffer
         cmd& ut = *ut_buffer_.readFromRT();
@@ -140,6 +136,10 @@ namespace franka_example_controllers {
         std::array<double, 7> coriolis_array = model_handle_->getCoriolis();
         Eigen::Map<Eigen::Matrix<double, 7, 1>> coriolis(coriolis_array.data());
 
+        // mass
+        std::array<double, 49> mass = model_handle_->getMass();
+        std::array<double, 7> gravity = model_handle_->getGravity();
+
         // Robot state: Desired joint torque without gravity (Needed for torque saturation)
         Eigen::Map<Eigen::Matrix<double, 7, 1> > tau_J_d(robot_state.tau_J_d.data());
 
@@ -148,7 +148,7 @@ namespace franka_example_controllers {
         Eigen::Vector3d position(transform_.translation()); // Position
         Eigen::Quaterniond orientation(transform_.linear()); // Quaternion
 
-        Eigen::Vector7d tau_hybrid, tau_cmd;
+        Eigen::Matrix<double, 7, 1> tau_cmd;
 
         // Desired Force/Torque
         ud_.fd(3) = -ud_.fd(2) * position(1);
@@ -156,10 +156,10 @@ namespace franka_example_controllers {
 
         /**********Force Control*********/
 
-        Eigen::Vector6d dp_u = k_pf * (ud_.fd - ud_.f);
-        Eigen::Vector6d p_u = p_u_prev + period.toSec() * dp_u;
+        Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.fd - ud_.f);
+        Eigen::Matrix<double, 6, 1> p_u = p_u_prev + period.toSec() * dp_u;
         p_u_prev = p_u;
-        ud_.p += p_u;
+        ud_.p += p_u.head(3);
         ud_.v += dp_u;
 
         /********************************/
@@ -176,7 +176,7 @@ namespace franka_example_controllers {
         /*******************************************/
 
         /*************Position Error************/
-        Eigen::Vector6d position_err;
+        Eigen::Matrix<double, 6, 1> position_err;
         position_err.head(3) << ud_.p - position;
         position_err.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
         /***************************************/
@@ -234,10 +234,10 @@ namespace franka_example_controllers {
             pub_state_.msg_.qd[2] = ud_.q.y();
             pub_state_.msg_.qd[3] = ud_.q.z();
 
-            pub_state_.msg_.q[0] = q.w();
-            pub_state_.msg_.q[1] = q.x();
-            pub_state_.msg_.q[2] = q.y();
-            pub_state_.msg_.q[3] = q.z();
+            pub_state_.msg_.q[0] = orientation.w();
+            pub_state_.msg_.q[1] = orientation.x();
+            pub_state_.msg_.q[2] = orientation.y();
+            pub_state_.msg_.q[3] = orientation.z();
 
             pub_state_.unlockAndPublish();
         }        
@@ -257,32 +257,26 @@ namespace franka_example_controllers {
         return tau_d_saturated;
     }
 
-    void VariableImpedanceController::commandCallback(const franka_example_controllers::VariableImpedanceControllerCommand& msg) {
+    void VariableImpedanceController::commandCallback(const franka_example_controllers::VariableImpedanceControllerCommandConstPtr& msg) {
         cmd ut;
-        ut.f = Eigen::Vector6d::Map(msg.f.data());
-        ut.p = Eigen::Vector3d::Map(msg.p.data());
-        ut.q = Eigen::Quaterniond(msg.q[0], msg.q[1], msg.q[2], msg.q[3]);
-        ut.v = Eigen::Vector6d::Map(msg.v.data());
+        ut.f = Eigen::Matrix<double, 6, 1>::Map(msg->f.data());
+        ut.p = Eigen::Vector3d::Map(msg->p.data());
+        ut.q = Eigen::Quaterniond(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);
+        ut.v = Eigen::Matrix<double, 6, 1>::Map(msg->v.data());
         ut.S.setIdentity();
-        ut.S.diagonal() = Eigen::Vector6d::Map(msg.S.data());
-        ut.f = Eigen::Vector6d::Map(msg.fd.data());
+        ut.S.diagonal() = Eigen::Matrix<double, 6, 1>::Map(msg->S.data());
+        ut.f = Eigen::Matrix<double, 6, 1>::Map(msg->fd.data());
 
         ut_buffer_.writeFromNonRT(ut);
     }
 
-    void VariableImpedanceController::gainConfigCallback(const franka_example_controllers::Gain& msg) {
+    void VariableImpedanceController::gainConfigCallback(const franka_example_controllers::GainConstPtr& msg) {
         K_P.setIdentity();
         K_D.setIdentity();
-        if (msg.kDefineDamping==<1) {
-            for (size_t i = 0; i < 6; ++i) {
-                K_P(i, i) = msg.kp[i];
-                K_D(i, i) = msg.kd[i];
-            }
-        } else {
-            for (size_t i = 0; i < 6; ++i) {
-                K_P(i, i) = msg.kp[i];
-                K_D(i, i) = 2 * std::sqrt(msg.kp[i]);
-            }
+        
+        for (size_t i = 0; i < 6; ++i) {
+            K_P(i, i) = msg->kp[i];
+            K_D(i, i) = msg->kd[i];
         }
     }
 
