@@ -16,6 +16,7 @@
 #include <realtime_tools/realtime_publisher.h>
 #include <realtime_tools/realtime_buffer.h>
 #include <franka_hw/trigger_rate.h>
+#include <franka_example_controllers/VariableImpedanceControllerCommand.h>
 #include <franka_example_controllers/VariableImpedanceControllerState.h>
 #include <franka_example_controllers/Gain.h>
 
@@ -27,13 +28,13 @@ namespace franka_example_controllers {
     public:
 
         struct cmd {
-            Eigen::Vector6d f; // force
+            Eigen::Matrix<double, 6, 1> f; // force
             Eigen::Vector3d p; // position
             Eigen::Quaterniond q; // quaternion
-            Eigen::Vector6d v; // velocity
-            Eigen::Matrix6d S; // selection matrix
-            Eigen::Vector6d fd; // desired force
-        }
+            Eigen::Matrix<double, 6, 1> v; // velocity
+            Eigen::Matrix<double, 6, 6> S; // selection matrix
+            Eigen::Matrix<double, 6, 1> fd; // desired force
+        };
 
         bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& node_handle) override;
         void starting(const ros::Time&) override;
@@ -52,24 +53,18 @@ namespace franka_example_controllers {
             const Eigen::Matrix<double, 7, 1>& tau_J_d);
 
         // z Force control
-        Eigen::Matrix6d k_pf;
-        Eigen::Vector6d p_u_prev;
+        Eigen::Matrix<double, 6, 6> k_pf;
+        Eigen::Matrix<double, 6, 1> p_u_prev;
 
         // x-y Motion control
         Eigen::Affine3d transform_;
-        Eigen::Matrix<double, 6, 1> twist_d_;
-        Eigen::Vector3d position_d_;
-        Eigen::Quaterniond orientation_d_;
+        
         // Adjoint transform
         Eigen::Matrix<double, 6, 6> adjoint(Eigen::Affine3d transform);
 
         // Gain Values
-        Eigen::Matrix6d K_P;
-        Eigen::Matrix6d K_D;
-
-        // Dynamic reconfigure
-        double target_force_{0.0};
-        Eigen::Matrix<double, 6, 1> target_vel_;
+        Eigen::Matrix<double, 6, 6> K_P;
+        Eigen::Matrix<double, 6, 6> K_D;
 
         // Realtime Buffer
         realtime_tools::RealtimeBuffer<cmd> ut_buffer_;
@@ -85,17 +80,17 @@ namespace franka_example_controllers {
         bool kReceiveGainConfig;
 
         ros::Subscriber sub_command_, sub_gain_config_;
-        void commandCallback(const franka_example_controllers::VariableImpedanceControllerCommand& msg);
-        void gainConfigCallback(const franka_example_controllers::Gain& msg);
+        void commandCallback(const franka_example_controllers::VariableImpedanceControllerCommandConstPtr& msg);
+        void gainConfigCallback(const franka_example_controllers::GainConstPtr& msg);
 
         // desired command (control law)
         cmd ud_;
 
         // Filter joint velocity
-        Eigen::Vector7d dq_filter_;
+        Eigen::Matrix<double, 7, 1> dq_filter_;
 
         // Offset for measured force
-        Eigen::Vector6d f0_;
+        Eigen::Matrix<double, 6, 1> f0_;
 
         // low-pass filter params
         double alpha_dq_{0.95};
