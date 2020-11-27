@@ -105,8 +105,6 @@ namespace franka_example_controllers {
 
         // initial external force for compensation
         f0_ = Eigen::Matrix<double, 6, 1>::Map(initial_state.O_F_ext_hat_K.data());
-
-        p_u_prev(2) = ud_.p(2);
     }
 
     void VariableImpedanceController::update(const ros::Time& t_clock, const ros::Duration& period) {
@@ -151,9 +149,8 @@ namespace franka_example_controllers {
         Eigen::Matrix<double, 7, 1> tau_cmd;
 
         Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.f - (f_ - f0_));
-        Eigen::Matrix<double, 6, 1> p_u = p_u_prev + period.toSec() * dp_u;
-        p_u_prev = p_u;
-        ud_.p += p_u.head(3);
+        Eigen::Matrix<double, 6, 1> p_delta = period.toSec() * dp_u;
+        ud_.p += p_delta.head(3);
         ud_.v += dp_u;
 
         /********************************/
