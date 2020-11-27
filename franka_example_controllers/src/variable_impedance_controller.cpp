@@ -119,7 +119,7 @@ namespace franka_example_controllers {
         // read target command from buffer
         cmd& ut = *ut_buffer_.readFromRT();
 
-        f_ = Eigen::Matrix<double, 6, 1>::Map(robot_state.O_F_ext_hat_K.data());
+        Eigen::Matrix<double, 6, 1> f_ = Eigen::Matrix<double, 6, 1>::Map(robot_state.O_F_ext_hat_K.data());
 
         ud_.p = ut.p;
         ud_.q = ut.q;
@@ -134,10 +134,6 @@ namespace franka_example_controllers {
         std::array<double, 7> coriolis_array = model_handle_->getCoriolis();
         Eigen::Map<Eigen::Matrix<double, 7, 1>> coriolis(coriolis_array.data());
 
-        // mass
-        std::array<double, 49> mass = model_handle_->getMass();
-        std::array<double, 7> gravity = model_handle_->getGravity();
-
         // Robot state: Desired joint torque without gravity (Needed for torque saturation)
         Eigen::Map<Eigen::Matrix<double, 7, 1> > tau_J_d(robot_state.tau_J_d.data());
 
@@ -145,8 +141,6 @@ namespace franka_example_controllers {
         transform_ = Eigen::Matrix4d::Map(robot_state.O_T_EE.data());
         Eigen::Vector3d position(transform_.translation()); // Position
         Eigen::Quaterniond orientation(transform_.linear()); // Quaternion
-
-        Eigen::Matrix<double, 7, 1> tau_cmd;
 
         Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.f - (f_ - f0_));
         Eigen::Matrix<double, 6, 1> p_delta = period.toSec() * dp_u;
@@ -187,7 +181,7 @@ namespace franka_example_controllers {
         std::array<double, 42> body_jacobian_array =
         model_handle_->getBodyJacobian(franka::Frame::kEndEffector);
 
-        Eigen::Vector7d tau_cmd = jacobian.transpose() * (K_P * (position_err) 
+        Eigen::Matrix<double, 7, 1> tau_cmd = jacobian.transpose() * (K_P * (position_err) 
                         + K_D * (ud_.v - jacobian * dq_filter_)) + coriolis;
 
         // Torque saturation
@@ -236,7 +230,7 @@ namespace franka_example_controllers {
             pub_state_.msg_.q[2] = orientation.y();
             pub_state_.msg_.q[3] = orientation.z();
 
-            pub_state_.msg_.time = elapsed_time_.toSec();
+            pub_state_.msg_.time = elapsed_time_;
 
             pub_state_.unlockAndPublish();
         }
