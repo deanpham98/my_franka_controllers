@@ -54,7 +54,7 @@ namespace franka_example_controllers {
 
         // z Force control
         Eigen::Matrix<double, 6, 6> k_pf;
-        Eigen::Matrix<double, 6, 1> p_u_prev;
+        Eigen::Matrix<double, 6, 1> sum;
 
         // x-y Motion control
         Eigen::Affine3d transform_;

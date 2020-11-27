@@ -47,7 +47,7 @@ namespace franka_example_controllers {
             K_D(i, i) = 2 * std::sqrt(K_P(i, i));
         }
 
-        k_pf.setIdentity();
+        k_pf.setZero();
 
         k_pf(2, 2) = 0.01;
 
@@ -105,6 +105,8 @@ namespace franka_example_controllers {
 
         // initial external force for compensation
         f0_ = Eigen::Matrix<double, 6, 1>::Map(initial_state.O_F_ext_hat_K.data());
+
+        // p_u_prev(2) = ud_.p(2);
     }
 
     void VariableImpedanceController::update(const ros::Time& t_clock, const ros::Duration& period) {
@@ -142,15 +144,30 @@ namespace franka_example_controllers {
         Eigen::Vector3d position(transform_.translation()); // Position
         Eigen::Quaterniond orientation(transform_.linear()); // Quaternion
 
-        Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.f - (f_ - f0_));
-        Eigen::Matrix<double, 6, 1> p_delta = period.toSec() * dp_u;
-        ud_.p += p_delta.head(3);
-        ud_.v += dp_u;
+        if (!ud_.f.isZero(0)) {
+            Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.f - (f_ - f0_));
+            sum += period.toSec() * dp_u;
+            for (size_t i = 0; i < 6; i++) {
+                sum(i) = (sum(i) > 2e-3) ? 5e-3 : sum(i);
+                sum(i) = (sum(i) < -5e-3) ? -5e-3 : sum(i);
+            }
+            ud_.p += sum.head(3);
+            ud_.v += dp_u;
+        }
 
-        /********************************/
+        if (!ud_.f.isZero(0)) {
+            std::cout << "k_pf = " << k_pf << std::endl;
+            std::cout << "ud_.f = " << ud_.f << std::endl;
+            std::cout << "f_ = " << f_ << std::endl;
+            std::cout << "f0_ = " << f0_ << std::endl;
+            std::cout << "sum = " << sum << std::endl;
+            std::cout << "ud_.p = " << ud_.p << std::endl;
+            std::cout << "ud_.v = " << ud_.v << std::endl;
+            std::cout << "----------------" << std::endl;
+        }
+        
 
         /*************Orientation Error*************/
-        ud_.q.coeffs() << 1.0, 0.0, 0.0, 0.0;
         if (ud_.q.coeffs().dot(orientation.coeffs()) < 0.0) {
             orientation.coeffs() << -orientation.coeffs();
         }
@@ -183,7 +200,7 @@ namespace franka_example_controllers {
 
         Eigen::Matrix<double, 7, 1> tau_cmd = jacobian.transpose() * (K_P * (position_err) 
                         + K_D * (ud_.v - jacobian * dq_filter_)) + coriolis;
-
+        
         // Torque saturation
         tau_cmd = saturateTorqueRate(tau_cmd, tau_J_d);
         
@@ -256,7 +273,14 @@ namespace franka_example_controllers {
         ut.p = Eigen::Vector3d::Map(msg->p.data());
         ut.q = Eigen::Quaterniond(msg->q[0], msg->q[1], msg->q[2], msg->q[3]);
         ut.v = Eigen::Matrix<double, 6, 1>::Map(msg->v.data());
-
+        // if (ut.v(1) > 0.01 || ut.v(1) < -0.01) {
+        //     std::cout << "ut.v = " << ut.v << std::endl;
+        //     std::cout << "---------------" << std::endl;
+        // } else
+        // {
+        //     std::cout << "LALALALALALA" << std::endl;
+        // }
+        
         ut_buffer_.writeFromNonRT(ut);
     }
 

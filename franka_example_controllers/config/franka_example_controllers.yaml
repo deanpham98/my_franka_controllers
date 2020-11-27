@@ -1,3 +1,6 @@
+motion_generator:
+  type: franka_motion_primitive/MotionGenerator
+
 variable_impedance_controller:
     type: franka_example_controllers/VariableImpedanceController
     arm_id: panda
@@ -10,6 +13,14 @@ variable_impedance_controller:
         - panda_joint6
         - panda_joint7
     publish_rate: 100.0
+    gain:
+        Kp:
+            - 1000.0
+            - 1000.0
+            - 1000.0
+            - 60.0
+            - 60.0
+            - 60.0
 
 joint_velocity_example_controller:
     type: franka_example_controllers/JointVelocityExampleController
