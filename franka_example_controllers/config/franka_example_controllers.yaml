@@ -12,7 +12,7 @@ variable_impedance_controller:
         - panda_joint5
         - panda_joint6
         - panda_joint7
-    publish_rate: 100.0
+    publish_rate: 500.0
     gain:
         Kp:
             - 1000.0

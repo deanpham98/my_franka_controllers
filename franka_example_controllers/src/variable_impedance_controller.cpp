@@ -49,7 +49,7 @@ namespace franka_example_controllers {
 
         k_pf.setZero();
 
-        k_pf(2, 2) = 0.01;
+        k_pf(2, 2) = 1e-2;
 
         // Joint interfaces and handles
         auto* effort_joint_interface = robot_hw->get<hardware_interface::EffortJointInterface>();
@@ -145,27 +145,16 @@ namespace franka_example_controllers {
         Eigen::Quaterniond orientation(transform_.linear()); // Quaternion
 
         if (!ud_.f.isZero(0)) {
+            
             Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.f - (f_ - f0_));
             sum += period.toSec() * dp_u;
             for (size_t i = 0; i < 6; i++) {
-                sum(i) = (sum(i) > 2e-3) ? 5e-3 : sum(i);
-                sum(i) = (sum(i) < -5e-3) ? -5e-3 : sum(i);
+                sum(i) = (sum(i) > 3e-2) ? 3e-2 : sum(i);
+                sum(i) = (sum(i) < -3e-2) ? -3e-2 : sum(i);
             }
             ud_.p += sum.head(3);
             ud_.v += dp_u;
         }
-
-        if (!ud_.f.isZero(0)) {
-            std::cout << "k_pf = " << k_pf << std::endl;
-            std::cout << "ud_.f = " << ud_.f << std::endl;
-            std::cout << "f_ = " << f_ << std::endl;
-            std::cout << "f0_ = " << f0_ << std::endl;
-            std::cout << "sum = " << sum << std::endl;
-            std::cout << "ud_.p = " << ud_.p << std::endl;
-            std::cout << "ud_.v = " << ud_.v << std::endl;
-            std::cout << "----------------" << std::endl;
-        }
-        
 
         /*************Orientation Error*************/
         if (ud_.q.coeffs().dot(orientation.coeffs()) < 0.0) {
@@ -211,7 +200,11 @@ namespace franka_example_controllers {
         if (rate_trigger_() && pub_state_.trylock()) {
             for (size_t i = 0; i < 3; ++i) {
                 pub_state_.msg_.ee_vel[i] = ud_.v(i);
-                pub_state_.msg_.ee_vel[i + 3] = ud_.v(i + 3);
+                pub_state_.msg_.ee_vel[i + 3] = ud_.v(i + 3);                
+                pub_state_.msg_.fe[i] = f_(i) - f0_(i);
+                pub_state_.msg_.fe[i + 3] = f_(i + 3) - f0_(i + 3);
+                pub_state_.msg_.fd[i] = ud_.f(i);
+                pub_state_.msg_.fd[i + 3] = ud_.f(i + 3);
                 pub_state_.msg_.pd[i] = ud_.p(i);
                 pub_state_.msg_.p[i] = position(i);
                 pub_state_.msg_.Kp[i] = K_P(i, i);

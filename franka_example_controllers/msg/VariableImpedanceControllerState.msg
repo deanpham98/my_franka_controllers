@@ -15,3 +15,5 @@ float64[7] C
 float64[7] g
 float64[7] tau_d
 float64[6] ee_vel
+float64[6] fe
+float64[6] fd
