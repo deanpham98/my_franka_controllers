@@ -31,6 +31,10 @@ add_message_files(FILES
   Gain.msg
 )
 
+add_service_files(FILES
+  ResetController.srv
+)
+
 generate_messages()
 
 generate_dynamic_reconfigure_options(

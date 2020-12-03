@@ -70,6 +70,13 @@ namespace franka_example_controllers {
         // Realtime Publisher
         pub_state_.init(node_handle, "state", 1);
 
+        // service
+        reset_controller_serv_ =
+            node_handle.advertiseService<ResetController::Request, ResetController::Response>(
+                "reset_controller",
+                boost::bind(&VariableImpedanceController::reset_controller, this, _1, _2));
+
+
         return true;
     }
 
@@ -107,6 +114,8 @@ namespace franka_example_controllers {
         f0_ = Eigen::Matrix<double, 6, 1>::Map(initial_state.O_F_ext_hat_K.data());
 
         // p_u_prev(2) = ud_.p(2);
+        sum.setZero();
+        kResetController = false;
     }
 
     void VariableImpedanceController::update(const ros::Time& t_clock, const ros::Duration& period) {
@@ -144,8 +153,16 @@ namespace franka_example_controllers {
         Eigen::Vector3d position(transform_.translation()); // Position
         Eigen::Quaterniond orientation(transform_.linear()); // Quaternion
 
+        // service
+        if (kResetController) {
+          f0_ = f_;
+          sum.setZero();
+          kResetController = false;
+        }
+
+
         if (!ud_.f.isZero(0)) {
-            
+
             Eigen::Matrix<double, 6, 1> dp_u = k_pf * (ud_.f - (f_ - f0_));
             sum += period.toSec() * dp_u;
             for (size_t i = 0; i < 6; i++) {
@@ -155,6 +172,7 @@ namespace franka_example_controllers {
             ud_.p += sum.head(3);
             ud_.v += dp_u;
         }
+
 
         /*************Orientation Error*************/
         if (ud_.q.coeffs().dot(orientation.coeffs()) < 0.0) {
@@ -170,14 +188,15 @@ namespace franka_example_controllers {
         Eigen::Matrix<double, 6, 1> position_err;
         position_err.head(3) << ud_.p - position;
         position_err.tail(3) << error_quaternion_angle_axis.axis() * error_quaternion_angle_axis.angle();
-        
+
         for (size_t i = 0; i < 3; i++){
-            if (std::isnan(position_err(i + 3))) 
+            if (std::isnan(position_err(i + 3)))
                 position_err(i + 3) = 0.;
+
         }
 
         /***************************************/
-        
+
         // jacobian matrix
         std::array<double, 42> jacobian_array =
         model_handle_->getZeroJacobian(franka::Frame::kEndEffector);
@@ -187,12 +206,12 @@ namespace franka_example_controllers {
         std::array<double, 42> body_jacobian_array =
         model_handle_->getBodyJacobian(franka::Frame::kEndEffector);
 
-        Eigen::Matrix<double, 7, 1> tau_cmd = jacobian.transpose() * (K_P * (position_err) 
+        Eigen::Matrix<double, 7, 1> tau_cmd = jacobian.transpose() * (K_P * (position_err)
                         + K_D * (ud_.v - jacobian * dq_filter_)) + coriolis;
-        
+
         // Torque saturation
         tau_cmd = saturateTorqueRate(tau_cmd, tau_J_d);
-        
+
         for (size_t i = 0; i < 7; ++i)
             joint_handles_[i].setCommand(tau_cmd(i));
 
@@ -200,7 +219,7 @@ namespace franka_example_controllers {
         if (rate_trigger_() && pub_state_.trylock()) {
             for (size_t i = 0; i < 3; ++i) {
                 pub_state_.msg_.ee_vel[i] = ud_.v(i);
-                pub_state_.msg_.ee_vel[i + 3] = ud_.v(i + 3);                
+                pub_state_.msg_.ee_vel[i + 3] = ud_.v(i + 3);
                 pub_state_.msg_.fe[i] = f_(i) - f0_(i);
                 pub_state_.msg_.fe[i + 3] = f_(i + 3) - f0_(i + 3);
                 pub_state_.msg_.fd[i] = ud_.f(i);
@@ -212,7 +231,7 @@ namespace franka_example_controllers {
                 pub_state_.msg_.Kp[i+3] = K_P(i+3, i+3);
                 pub_state_.msg_.Kd[i+3] = K_D(i+3, i+3);
             }
-            
+
             for (size_t i=0; i < 42; i++){
                 pub_state_.msg_.jacobian[i] = jacobian_array[i];
                 pub_state_.msg_.body_jacobian[i] = body_jacobian_array[i];
@@ -254,7 +273,7 @@ namespace franka_example_controllers {
         Eigen::Matrix<double, 7, 1> tau_d_saturated{};
         for (size_t i = 0; i < 7; i++) {
             double difference = tau_d_calculated[i] - tau_J_d[i];
-            tau_d_saturated[i] = tau_J_d[i] + 
+            tau_d_saturated[i] = tau_J_d[i] +
                     std::max(std::min(difference, delta_tau_max_), -delta_tau_max_);
         }
         return tau_d_saturated;
@@ -273,20 +292,25 @@ namespace franka_example_controllers {
         // {
         //     std::cout << "LALALALALALA" << std::endl;
         // }
-        
+
         ut_buffer_.writeFromNonRT(ut);
     }
 
     void VariableImpedanceController::gainConfigCallback(const franka_example_controllers::GainConstPtr& msg) {
         K_P.setIdentity();
         K_D.setIdentity();
-        
+
         for (size_t i = 0; i < 6; ++i) {
             K_P(i, i) = msg->kp[i];
             K_D(i, i) = msg->kd[i];
         }
     }
 
+    bool VariableImpedanceController::reset_controller(ResetController::Request &req, ResetController::Response &res){
+      ROS_INFO("Received request to reset controller");
+      kResetController = true;
+      return true;
+    }
 } // end namespace
 
 PLUGINLIB_EXPORT_CLASS(franka_example_controllers::VariableImpedanceController,

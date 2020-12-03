@@ -20,6 +20,9 @@
 #include <franka_example_controllers/VariableImpedanceControllerState.h>
 #include <franka_example_controllers/Gain.h>
 
+// service
+#include <franka_example_controllers/ResetController.h>
+
 namespace franka_example_controllers {
     class VariableImpedanceController : public controller_interface::MultiInterfaceController<
                                         franka_hw::FrankaStateInterface,
@@ -45,6 +48,11 @@ namespace franka_example_controllers {
         std::unique_ptr<franka_hw::FrankaStateHandle> state_handle_;
         std::unique_ptr<franka_hw::FrankaModelHandle> model_handle_;
         std::vector<hardware_interface::JointHandle> joint_handles_;
+
+        // reset controller service
+        ros::ServiceServer reset_controller_serv_;
+        bool reset_controller(ResetController::Request &req, ResetController::Response &res);
+        bool kResetController;
 
         // Torque saturation and limitation
         static constexpr double delta_tau_max_{5.0};
